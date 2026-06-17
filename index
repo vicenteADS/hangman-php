@@ -1,0 +1,233 @@
+<?php
+
+/**
+ * index.php — Ponto de entrada do Jogo da Forca (PHP puro).
+ * v1.0.0 — sem banco de dados, estado em $_SESSION.
+ */
+
+session_start();
+require_once 'game.php';
+
+// --- Controlador ---
+
+$feedback = '';
+
+// Nova partida
+if (!isset($_SESSION['game']) || isset($_GET['new'])) {
+    startGame();
+}
+
+// Processa letra enviada via POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['letter'])) {
+    $feedback = guessLetter($_POST['letter']);
+}
+
+// Atalho para dados do jogo atual
+$game   = $_SESSION['game'];
+$masked = getMaskedWord();
+$svg    = renderGallows($game['errors']);
+
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jogo da Forca — PHP v1.0.0</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f4f0;
+      color: #1a1a1a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      border: 1px solid #e0dfd8;
+      padding: 32px;
+      width: 100%;
+      max-width: 520px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    h1 { font-size: 20px; font-weight: 500; }
+
+    .version { font-size: 11px; color: #888; font-family: monospace;
+      background: #f0efe9; padding: 2px 8px; border-radius: 99px; }
+
+    .gallows-svg {
+      width: 100%;
+      max-width: 300px;
+      display: block;
+      margin: 0 auto 20px;
+      color: #3d3d3a;
+    }
+
+    .errors-count {
+      text-align: center;
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 20px;
+    }
+
+    .errors-count strong { color: <?php echo $game['errors'] >= 4 ? '#c0392b' : '#1a1a1a'; ?>; }
+
+    .hint {
+      text-align: center;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .masked-word {
+      text-align: center;
+      font-size: 32px;
+      letter-spacing: 10px;
+      font-weight: 500;
+      margin-bottom: 24px;
+      font-family: monospace;
+    }
+
+    .guesses {
+      text-align: center;
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 20px;
+      min-height: 20px;
+    }
+
+    .feedback {
+      text-align: center;
+      font-size: 13px;
+      color: #185FA5;
+      margin-bottom: 16px;
+      min-height: 20px;
+    }
+
+    form.guess-form {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    input[name="letter"] {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 18px;
+      border: 1px solid #d0cfc8;
+      border-radius: 8px;
+      text-align: center;
+      text-transform: uppercase;
+      outline: none;
+    }
+
+    input[name="letter"]:focus { border-color: #7F77DD; }
+
+    button[type="submit"] {
+      padding: 10px 20px;
+      background: #534AB7;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    button[type="submit"]:hover { background: #3C3489; }
+
+    .new-game-btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      text-align: center;
+      background: #f0efe9;
+      color: #1a1a1a;
+      border: 1px solid #d0cfc8;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .new-game-btn:hover { background: #e5e4de; }
+
+    .status-banner {
+      text-align: center;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 16px;
+    }
+
+    .status-won  { background: #EAF3DE; color: #3B6D11; }
+    .status-lost { background: #FCEBEB; color: #A32D2D; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    <h1>Jogo da Forca</h1>
+    <span class="version">PHP v1.0.0</span>
+  </div>
+
+  <?php echo $svg; ?>
+
+  <p class="errors-count">
+    Erros: <strong><?php echo $game['errors']; ?></strong> / <?php echo MAX_ERRORS; ?>
+  </p>
+
+  <p class="hint">Dica: <?php echo htmlspecialchars($game['hint']); ?></p>
+
+  <p class="masked-word"><?php echo htmlspecialchars($masked); ?></p>
+
+  <?php if (!empty($game['guesses'])): ?>
+    <p class="guesses">
+      Letras tentadas: <?php echo implode(', ', $game['guesses']); ?>
+    </p>
+  <?php endif; ?>
+
+  <?php if ($feedback): ?>
+    <p class="feedback"><?php echo htmlspecialchars($feedback); ?></p>
+  <?php endif; ?>
+
+  <?php if ($game['status'] === 'won'): ?>
+    <div class="status-banner status-won">🎉 Você acertou! A palavra era "<?php echo $game['word']; ?>"</div>
+  <?php elseif ($game['status'] === 'lost'): ?>
+    <div class="status-banner status-lost">💀 Você perdeu! A palavra era "<?php echo $game['word']; ?>"</div>
+  <?php else: ?>
+    <form class="guess-form" method="POST" action="">
+      <input
+        type="text"
+        name="letter"
+        maxlength="1"
+        placeholder="A"
+        autocomplete="off"
+        autofocus
+        required
+      >
+      <button type="submit">Tentar</button>
+    </form>
+  <?php endif; ?>
+
+  <a class="new-game-btn" href="?new=1">Nova partida</a>
+</div>
+</body>
+</html>
